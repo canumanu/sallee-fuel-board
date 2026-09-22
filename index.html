@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sallee Fuel Board</title>
+<meta name="description" content="Live fuel stop rankings by state and the driver savings challenge leaderboard.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0C0F; --panel:#14171D; --panel-2:#1A1E25; --line:#2A2F38;
+    --ink:#F3F0E6; --ink-dim:#8B909C; --ink-faint:#565B66;
+    --amber:#FFB000; --amber-dim:#8A5E00; --amber-glow:rgba(255,176,0,.16);
+    --good:#4ADE80; --good-dim:#1E4430;
+    --gold:#FFD24D; --gold-bg:rgba(255,210,77,.10);
+    --silver:#D8DCE3; --silver-bg:rgba(216,220,227,.08);
+    --bronze:#E3995A; --bronze-bg:rgba(227,153,90,.10);
+  }
+  *{box-sizing:border-box;}
+  html,body{ margin:0; background:var(--bg); }
+  body{
+    color:var(--ink); font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    padding-inline:max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right));
+    padding-block:18px 60px; max-width:1040px; margin:0 auto;
+  }
+  .disp{ font-family:'Bebas Neue',-apple-system,sans-serif; letter-spacing:.03em; }
+  .mono{ font-family:'IBM Plex Mono',ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+  a{ color:inherit; }
+
+  /* ---- header / board marquee ---- */
+  header{
+    border:1px solid var(--line); border-radius:4px; background:var(--panel);
+    padding:14px 18px; margin-bottom:16px; display:flex; justify-content:space-between;
+    align-items:flex-end; gap:12px; flex-wrap:wrap;
+  }
+  .brand{ font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:var(--amber); font-weight:600; margin:0 0 4px; }
+  h1{ font-size:34px; margin:0; line-height:.95; color:var(--ink); }
+  .asof{ text-align:right; color:var(--ink-dim); font-size:12px; line-height:1.6; }
+  .asof b{ color:var(--ink); }
+
+  /* ---- board tabs ---- */
+  .tabs{ display:flex; gap:2px; background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:2px; margin-bottom:16px; overflow-x:auto; }
+  .tab-btn{
+    flex:1; min-width:110px; border:none; background:transparent; color:var(--ink-dim);
+    font-family:'Bebas Neue'; font-size:18px; letter-spacing:.06em; padding:10px 8px; cursor:pointer; border-radius:3px;
+  }
+  .tab-btn.active{ background:var(--amber-glow); color:var(--amber); }
+  .tab-btn:focus-visible{ outline:2px solid var(--amber); outline-offset:-2px; }
+
+  section.view{ display:none; }
+  section.view.active{ display:block; }
+
+  /* ---- picker rows (states / months / drivers) ---- */
+  .picker{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+  .pick{
+    border:1px solid var(--line); background:var(--panel); color:var(--ink-dim);
+    font-family:'IBM Plex Mono'; font-weight:600; font-size:13px; letter-spacing:.02em;
+    padding:7px 13px; border-radius:3px; cursor:pointer;
+  }
+  .pick.active{ background:var(--amber); color:#1A1200; border-color:var(--amber); }
+  .pick:focus-visible{ outline:2px solid var(--amber); outline-offset:1px; }
+
+  .board-head{
+    display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+    margin:2px 0 8px; flex-wrap:wrap; border-bottom:1px solid var(--line); padding-bottom:8px;
+  }
+  .board-head h2{ font-size:26px; margin:0; color:var(--ink); }
+  .board-head .count{ color:var(--ink-faint); font-size:12px; font-family:'IBM Plex Mono'; }
+
+  .sort-row{ display:flex; gap:6px; margin-bottom:12px; }
+  .sort-btn{
+    border:1px solid var(--line); background:transparent; color:var(--ink-dim);
+    font-size:11.5px; font-weight:600; padding:5px 10px; border-radius:3px; cursor:pointer;
+    text-transform:uppercase; letter-spacing:.04em;
+  }
+  .sort-btn.active{ border-color:var(--amber); color:var(--amber); }
+
+  /* ---- board rows (shared: stops / leaderboard / driver history) ---- */
+  .board{ border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+  .row{
+    display:grid; grid-template-columns:38px 1fr auto 16px; align-items:center; gap:10px;
+    padding:10px 12px; background:var(--panel); border-bottom:1px solid var(--line); cursor:pointer;
+  }
+  .row:last-child{ border-bottom:none; }
+  .row:hover{ background:var(--panel-2); }
+  .rownum{ font-family:'IBM Plex Mono'; font-weight:700; font-size:15px; color:var(--ink-faint); text-align:center; }
+  .rowmain .name{ font-weight:600; font-size:14.5px; color:var(--ink); }
+  .rowmain .sub{ color:var(--ink-dim); font-size:12px; margin-top:2px; }
+  .rowmain .sub .mono{ color:var(--ink-faint); }
+  .rownums{ text-align:right; }
+  .rownums .big{ font-family:'IBM Plex Mono'; font-weight:700; font-size:19px; color:var(--ink); }
+  .rownums .small{ font-family:'IBM Plex Mono'; font-size:12px; color:var(--good); font-weight:600; }
+  .chev{ color:var(--ink-faint); font-size:13px; transition:transform .15s ease; }
+  .row.open .chev{ transform:rotate(90deg); color:var(--amber); }
+
+  .row.rank1{ background:var(--gold-bg); border-left:3px solid var(--gold); } .row.rank1 .rownum{ color:var(--gold); }
+  .row.rank2{ background:var(--silver-bg); border-left:3px solid var(--silver); } .row.rank2 .rownum{ color:var(--silver); }
+  .row.rank3{ background:var(--bronze-bg); border-left:3px solid var(--bronze); } .row.rank3 .rownum{ color:var(--bronze); }
+  .row.rank1, .row.rank2, .row.rank3{ padding-left:9px; }
+
+  .detail{
+    display:none; padding:10px 14px 14px 62px; background:var(--bg); border-bottom:1px solid var(--line);
+    font-family:'IBM Plex Mono'; font-size:12.5px; color:var(--ink-dim);
+  }
+  .detail.open{ display:block; }
+  .detail .dl{ display:flex; gap:18px; flex-wrap:wrap; }
+  .detail .dl div b{ color:var(--ink); display:block; font-size:15px; margin-bottom:1px; }
+  .detail .dl div span{ text-transform:uppercase; font-size:10px; letter-spacing:.06em; color:var(--ink-faint); }
+
+  /* ---- KPI strip ---- */
+  .kpi-strip{ display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:4px; overflow:hidden; margin-bottom:16px; }
+  .kpi{ background:var(--panel); padding:12px 10px; }
+  .kpi .label{ font-size:10px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.05em; }
+  .kpi .val{ font-family:'IBM Plex Mono'; font-weight:700; font-size:20px; margin-top:3px; color:var(--ink); }
+  .kpi.money .val{ color:var(--good); }
+  @media (max-width:520px){ .kpi-strip{ grid-template-columns:repeat(2,1fr); } }
+
+  /* ---- driver search ---- */
+  .search-wrap{ margin-bottom:12px; }
+  .search-wrap input{
+    width:100%; background:var(--panel); border:1px solid var(--line); color:var(--ink);
+    font-family:'Inter'; font-size:14px; padding:10px 12px; border-radius:4px;
+  }
+  .search-wrap input:focus{ outline:2px solid var(--amber); outline-offset:-1px; }
+  .driver-list{ max-height:280px; overflow-y:auto; border:1px solid var(--line); border-radius:4px; margin-bottom:18px; }
+  .driver-item{ padding:9px 12px; border-bottom:1px solid var(--line); cursor:pointer; font-size:13.5px; background:var(--panel); }
+  .driver-item:last-child{ border-bottom:none; }
+  .driver-item:hover{ background:var(--panel-2); }
+  .driver-item.active{ background:var(--amber-glow); color:var(--amber); font-weight:600; }
+
+  .driver-summary{ display:flex; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:4px; overflow:hidden; margin-bottom:16px; }
+  .driver-summary .cell{ flex:1; background:var(--panel); padding:12px 10px; text-align:center; }
+  .driver-summary .cell .label{ font-size:10px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.05em; }
+  .driver-summary .cell .val{ font-family:'IBM Plex Mono'; font-weight:700; font-size:20px; margin-top:3px; }
+
+  .trend{ border:1px solid var(--line); border-radius:4px; overflow:hidden; margin-bottom:8px; }
+  .trend-row{ display:grid; grid-template-columns:52px 1fr 70px 40px; align-items:center; gap:8px; padding:7px 12px; border-bottom:1px solid var(--line); background:var(--panel); font-family:'IBM Plex Mono'; font-size:12px; }
+  .trend-row:last-child{ border-bottom:none; }
+  .trend-bar-track{ background:var(--panel-2); border-radius:2px; height:10px; overflow:hidden; }
+  .trend-bar{ background:var(--amber); height:100%; border-radius:2px; }
+  .trend-save{ text-align:right; color:var(--good); font-weight:600; }
+  .trend-rank{ text-align:right; color:var(--ink-faint); }
+
+  .note{
+    margin-top:18px; padding:12px 14px; border-radius:4px; background:var(--panel);
+    border:1px solid var(--line); color:var(--ink-dim); font-size:12px; line-height:1.6;
+  }
+  .note b{ color:var(--ink); }
+
+  .print-btn{
+    border:1px solid var(--line); background:var(--panel); color:var(--ink-dim);
+    font-family:'IBM Plex Mono'; font-size:12px; font-weight:600; padding:7px 12px;
+    border-radius:3px; cursor:pointer; letter-spacing:.03em;
+  }
+  .print-btn:hover{ border-color:var(--amber); color:var(--amber); }
+
+  footer{ margin-top:26px; text-align:center; color:var(--ink-faint); font-size:11px; }
+  footer a{ color:var(--amber); text-decoration:none; }
+
+  @media print{
+    body{ background:#fff; color:#111; max-width:100%; }
+    header, .tabs, .picker, .sort-row, .search-wrap, .print-btn, footer{ display:none !important; }
+    .board, .kpi-strip, .driver-summary, .trend{ border-color:#ccc; }
+    .row, .kpi, .cell, .trend-row{ background:#fff !important; color:#111 !important; }
+    .detail{ background:#fafafa !important; }
+    section.view{ display:block !important; }
+  }
+  ::selection{ background:var(--amber-glow); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <p class="brand">Sallee Horse Vans &middot; Fuel Program</p>
+    <h1 class="disp">FUEL BOARD</h1>
+  </div>
+  <div class="asof">
+    Data through <b id="asOfLabel">&mdash;</b><br>
+    Updated <b id="updatedLabel">&mdash;</b>
+    &nbsp;&middot;&nbsp;<button class="print-btn" id="printBtn" style="margin-left:6px;">PRINT VIEW</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active disp" data-tab="stops">Fuel Stops</button>
+  <button class="tab-btn disp" data-tab="challenge">Challenge</button>
+  <button class="tab-btn disp" data-tab="driver">My Savings</button>
+</div>
+
+<!-- FUEL STOPS -->
+<section class="view active" id="viewStops">
+  <div class="picker" id="stateChips"></div>
+  <div class="board-head">
+    <h2 class="disp" id="stateHeading">&mdash;</h2>
+    <span class="count" id="stateCount"></span>
+  </div>
+  <div class="sort-row">
+    <button class="sort-btn active" data-sort="p">BEST PRICE</button>
+    <button class="sort-btn" data-sort="d">BEST DISCOUNT</button>
+    <button class="sort-btn" data-sort="g">MOST GALLONS</button>
+  </div>
+  <div class="board" id="stopBoard"></div>
+  <div class="note">Price is each stop's <b>weighted net price</b> &mdash; what we actually pay per gallon after the fuel-card discount, averaged across every fill there. Tap a row for the full breakdown. Off the regular corridors, use this to find the best-ranked stop in whatever state the route runs through.</div>
+</section>
+
+<!-- CHALLENGE -->
+<section class="view" id="viewChallenge">
+  <div class="picker" id="monthChips"></div>
+  <div class="kpi-strip">
+    <div class="kpi money"><div class="label">Company Saved</div><div class="val mono" id="kpiSaved">&mdash;</div></div>
+    <div class="kpi"><div class="label">Fill-Ups</div><div class="val mono" id="kpiFills">&mdash;</div></div>
+    <div class="kpi"><div class="label">Active Drivers</div><div class="val mono" id="kpiDrivers">&mdash;</div></div>
+    <div class="kpi"><div class="label">Avg / Driver</div><div class="val mono" id="kpiAvg">&mdash;</div></div>
+  </div>
+  <div class="board" id="lbBoard"></div>
+  <div class="note"><b>How it works:</b> ranked by total dollars saved (paid vs. retail) on ULSD fuel-card fills, reset each month &mdash; pick a month above, or view All-Time. This tracks and ranks savings; reward amounts are set by dispatch/ops.</div>
+</section>
+
+<!-- MY SAVINGS -->
+<section class="view" id="viewDriver">
+  <div class="search-wrap"><input type="text" id="driverSearch" placeholder="Search driver name..."></div>
+  <div class="driver-list" id="driverList"></div>
+  <div id="driverPanel"></div>
+</section>
+
+<footer>Sallee Fuel Board &middot; built from the ULSD fuel-card transaction export &middot; refreshed roughly every 2 weeks</footer>
+
+<script>
+let DATA = null;
+
+function fmtUSD(n){ return '$' + n.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}); }
+function fmtUSD2(n){ return '$' + n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function titleCase(s){ return s.replace(/\w\S*/g, t => t.charAt(0).toUpperCase()+t.slice(1).toLowerCase()); }
+function monthLabel(m){
+  if(m==='All-Time') return 'All-Time';
+  const [y,mo] = m.split('-');
+  return new Date(parseInt(y),parseInt(mo)-1,1).toLocaleString('en-US',{month:'short'}) + " '" + y.slice(2);
+}
+
+fetch('data/challenge_data.json').then(r=>r.json()).then(data=>{
+  DATA = data;
+  document.getElementById('asOfLabel').textContent = monthLabel(DATA.asOf) === DATA.asOf ? DATA.asOf : monthLabel(DATA.asOf);
+  document.getElementById('updatedLabel').textContent = DATA.updated || '—';
+  init();
+});
+
+function init(){
+  /* tabs */
+  document.querySelectorAll('.tab-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = btn.dataset.tab;
+      document.getElementById('viewStops').classList.toggle('active', tab==='stops');
+      document.getElementById('viewChallenge').classList.toggle('active', tab==='challenge');
+      document.getElementById('viewDriver').classList.toggle('active', tab==='driver');
+    });
+  });
+  document.getElementById('printBtn').addEventListener('click', ()=>window.print());
+
+  initStops();
+  initChallenge();
+  initDriver();
+}
+
+/* ================= FUEL STOPS ================= */
+let currentState, currentSort = 'p';
+
+function initStops(){
+  currentState = DATA.states.includes('FL') ? 'FL' : DATA.states[0];
+  const wrap = document.getElementById('stateChips');
+  DATA.states.forEach(st=>{
+    const b = document.createElement('button');
+    b.className = 'pick' + (st===currentState?' active':'');
+    b.textContent = st;
+    b.addEventListener('click', ()=>{ currentState = st; renderStateChips(); renderStops(); });
+    wrap.appendChild(b);
+  });
+  document.querySelectorAll('.sort-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.sort-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      currentSort = btn.dataset.sort;
+      renderStops();
+    });
+  });
+  renderStateChips();
+  renderStops();
+}
+function renderStateChips(){
+  document.querySelectorAll('#stateChips .pick').forEach(b=>b.classList.toggle('active', b.textContent===currentState));
+}
+function renderStops(){
+  const stops = (DATA.stopsByState[currentState]||[]).slice();
+  stops.sort((a,b)=> currentSort==='p' ? a[currentSort]-b[currentSort] : b[currentSort]-a[currentSort]);
+  document.getElementById('stateHeading').textContent = currentState;
+  document.getElementById('stateCount').textContent = stops.length + ' stop' + (stops.length===1?'':'s') + ' on file';
+  const board = document.getElementById('stopBoard');
+  board.innerHTML = '';
+  stops.forEach((s,i)=>{
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `
+      <div class="rownum mono">${i+1}</div>
+      <div class="rowmain">
+        <div class="name">${titleCase(s.n)}</div>
+        <div class="sub">${s.c}, ${currentState} &middot; <span class="mono">${s.tx} fill-up${s.tx===1?'':'s'}</span></div>
+      </div>
+      <div class="rownums">
+        <div class="big mono">$${s.p.toFixed(2)}</div>
+        <div class="small mono">&minus;$${s.d.toFixed(2)}/gal</div>
+      </div>
+      <div class="chev">&#9656;</div>`;
+    const detail = document.createElement('div');
+    detail.className = 'detail';
+    const totalGal = Math.round(s.g).toLocaleString();
+    const totalSaved = fmtUSD(s.g * s.d);
+    detail.innerHTML = `<div class="dl">
+        <div><b class="mono">${totalGal} gal</b><span>Lifetime Volume</span></div>
+        <div><b class="mono" style="color:var(--good)">${totalSaved}</b><span>Lifetime Saved Here</span></div>
+        <div><b class="mono">${s.tx}</b><span>Fill-Ups On File</span></div>
+      </div>`;
+    row.addEventListener('click', ()=>{
+      row.classList.toggle('open');
+      detail.classList.toggle('open');
+    });
+    board.appendChild(row);
+    board.appendChild(detail);
+  });
+}
+
+/* ================= CHALLENGE ================= */
+let currentMonth;
+function initChallenge(){
+  currentMonth = DATA.months[DATA.months.length-1];
+  const wrap = document.getElementById('monthChips');
+  [...DATA.months,'All-Time'].forEach(m=>{
+    const b = document.createElement('button');
+    b.className = 'pick' + (m===currentMonth?' active':'');
+    b.textContent = monthLabel(m);
+    b.addEventListener('click', ()=>{ currentMonth = m; renderMonthChips(); renderChallenge(); });
+    wrap.appendChild(b);
+  });
+  renderChallenge();
+}
+function renderMonthChips(){
+  const chips = document.querySelectorAll('#monthChips .pick');
+  const opts = [...DATA.months,'All-Time'];
+  chips.forEach((b,i)=> b.classList.toggle('active', opts[i]===currentMonth));
+}
+function renderChallenge(){
+  const board = (DATA.leaderboards[currentMonth]||[]).slice().sort((a,b)=>b.s-a.s);
+  const totalSaved = board.reduce((a,d)=>a+d.s,0);
+  const totalFills = board.reduce((a,d)=>a+d.tx,0);
+  const active = board.filter(d=>d.s>0).length;
+  document.getElementById('kpiSaved').textContent = fmtUSD(totalSaved);
+  document.getElementById('kpiFills').textContent = totalFills.toLocaleString();
+  document.getElementById('kpiDrivers').textContent = active.toLocaleString();
+  document.getElementById('kpiAvg').textContent = fmtUSD(active ? totalSaved/active : 0);
+
+  const el = document.getElementById('lbBoard');
+  el.innerHTML = '';
+  board.slice(0,15).forEach((d,i)=>{
+    const rank = i+1;
+    const row = document.createElement('div');
+    row.className = 'row' + (rank<=3 ? ' rank'+rank : '');
+    row.innerHTML = `
+      <div class="rownum mono">${rank}</div>
+      <div class="rowmain">
+        <div class="name">${d.n}</div>
+        <div class="sub"><span class="mono">${d.tx} fills &middot; ${Math.round(d.g).toLocaleString()} gal</span></div>
+      </div>
+      <div class="rownums"><div class="big mono" style="color:var(--good)">${fmtUSD2(d.s)}</div></div>
+      <div class="chev">&#9656;</div>`;
+    const detail = document.createElement('div');
+    detail.className = 'detail';
+    const perGal = d.g ? (d.s/d.g) : 0;
+    detail.innerHTML = `<div class="dl">
+        <div><b class="mono">${fmtUSD2(d.s)}</b><span>Total Saved</span></div>
+        <div><b class="mono">$${perGal.toFixed(2)}</b><span>Avg Saved / Gal</span></div>
+        <div><b class="mono">${Math.round(d.g).toLocaleString()} gal</b><span>Gallons Pumped</span></div>
+      </div>`;
+    row.addEventListener('click', ()=>{ row.classList.toggle('open'); detail.classList.toggle('open'); });
+    el.appendChild(row);
+    el.appendChild(detail);
+  });
+}
+
+/* ================= MY SAVINGS ================= */
+let allDrivers = [];
+let currentDriver = null;
+function initDriver(){
+  const names = new Set();
+  DATA.months.concat(['All-Time']).forEach(m=> (DATA.leaderboards[m]||[]).forEach(d=>names.add(d.n)));
+  allDrivers = Array.from(names).sort();
+  renderDriverList(allDrivers);
+  document.getElementById('driverSearch').addEventListener('input', (e)=>{
+    const q = e.target.value.toLowerCase();
+    renderDriverList(allDrivers.filter(n=>n.toLowerCase().includes(q)));
+  });
+}
+function renderDriverList(names){
+  const wrap = document.getElementById('driverList');
+  wrap.innerHTML = '';
+  names.forEach(n=>{
+    const d = document.createElement('div');
+    d.className = 'driver-item' + (n===currentDriver?' active':'');
+    d.textContent = n;
+    d.addEventListener('click', ()=>{ currentDriver = n; renderDriverList(names); renderDriverPanel(); });
+    wrap.appendChild(d);
+  });
+}
+function renderDriverPanel(){
+  const panel = document.getElementById('driverPanel');
+  if(!currentDriver){ panel.innerHTML = ''; return; }
+  const all = DATA.leaderboards['All-Time'].find(d=>d.n===currentDriver) || {tx:0,g:0,s:0};
+  const allSorted = DATA.leaderboards['All-Time'].slice().sort((a,b)=>b.s-a.s);
+  const allRank = allSorted.findIndex(d=>d.n===currentDriver) + 1;
+
+  const monthly = DATA.months.map(m=>{
+    const board = (DATA.leaderboards[m]||[]).slice().sort((a,b)=>b.s-a.s);
+    const idx = board.findIndex(d=>d.n===currentDriver);
+    return idx>=0 ? {month:m, rank:idx+1, ...board[idx]} : {month:m, rank:null, tx:0,g:0,s:0};
+  });
+  const maxSave = Math.max(1, ...monthly.map(m=>m.s));
+
+  panel.innerHTML = `
+    <div class="driver-summary">
+      <div class="cell"><div class="label">All-Time Rank</div><div class="val mono">#${allRank||'—'}</div></div>
+      <div class="cell"><div class="label">Total Saved</div><div class="val mono" style="color:var(--good)">${fmtUSD2(all.s)}</div></div>
+      <div class="cell"><div class="label">Fill-Ups</div><div class="val mono">${all.tx}</div></div>
+      <div class="cell"><div class="label">Gallons</div><div class="val mono">${Math.round(all.g).toLocaleString()}</div></div>
+    </div>
+    <div class="board-head"><h2 class="disp">MONTHLY TREND</h2></div>
+    <div class="trend" id="trendRows"></div>
+  `;
+  const trend = document.getElementById('trendRows');
+  monthly.forEach(m=>{
+    const row = document.createElement('div');
+    row.className = 'trend-row';
+    row.innerHTML = `
+      <div>${monthLabel(m.month)}</div>
+      <div class="trend-bar-track"><div class="trend-bar" style="width:${m.s>0 ? (m.s/maxSave*100) : 0}%"></div></div>
+      <div class="trend-save">${m.s>0 ? fmtUSD2(m.s) : '—'}</div>
+      <div class="trend-rank">${m.rank ? '#'+m.rank : '—'}</div>`;
+    trend.appendChild(row);
+  });
+}
+</script>
+</body>
+</html>
