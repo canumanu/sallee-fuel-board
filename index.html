@@ -240,7 +240,7 @@ function monthLabel(m){
   return new Date(parseInt(y),parseInt(mo)-1,1).toLocaleString('en-US',{month:'short'}) + " '" + y.slice(2);
 }
 
-fetch('data/challenge_data.json').then(r=>r.json()).then(data=>{
+fetch('challenge_data.json').then(r=>r.json()).then(data=>{
   DATA = data;
   document.getElementById('asOfLabel').textContent = monthLabel(DATA.asOf) === DATA.asOf ? DATA.asOf : monthLabel(DATA.asOf);
   document.getElementById('updatedLabel').textContent = DATA.updated || '—';
