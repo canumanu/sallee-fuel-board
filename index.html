@@ -78,6 +78,18 @@
   .sort-btn.active{ border-color:var(--amber); color:var(--amber); }
 
   /* ---- board rows (shared: stops / leaderboard / driver history) ---- */
+  /* ---- Valor callout card (KY only, excluded from price ranking) ---- */
+  .valor-card{
+    border:1px solid var(--amber-dim); border-radius:4px; background:var(--amber-glow);
+    padding:12px 14px; margin-bottom:14px;
+  }
+  .valor-card .vtop{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:4px; }
+  .valor-card .vname{ font-weight:700; font-size:14.5px; color:var(--amber); }
+  .valor-card .vprice{ font-family:'IBM Plex Mono'; font-weight:700; font-size:17px; color:var(--ink); }
+  .valor-card .vsub{ color:var(--ink-dim); font-size:12px; margin-bottom:6px; }
+  .valor-card .vnote{ color:var(--ink-dim); font-size:11.5px; line-height:1.5; border-top:1px solid var(--amber-dim); padding-top:6px; margin-top:6px; }
+  .valor-card .vnote b{ color:var(--amber); }
+
   .board{ border:1px solid var(--line); border-radius:4px; overflow:hidden; }
   .row{
     display:grid; grid-template-columns:38px 1fr auto 16px; align-items:center; gap:10px;
@@ -193,6 +205,7 @@
 <!-- FUEL STOPS -->
 <section class="view active" id="viewStops">
   <div class="picker" id="stateChips"></div>
+  <div id="valorCard"></div>
   <div class="board-head">
     <h2 class="disp" id="stateHeading">&mdash;</h2>
     <span class="count" id="stateCount"></span>
@@ -209,6 +222,10 @@
 <!-- CHALLENGE -->
 <section class="view" id="viewChallenge">
   <div class="picker" id="monthChips"></div>
+  <div class="sort-row" id="modeToggle">
+    <button class="sort-btn active" data-mode="individual">INDIVIDUAL</button>
+    <button class="sort-btn" data-mode="team">TEAM</button>
+  </div>
   <div class="kpi-strip">
     <div class="kpi money"><div class="label">Company Saved</div><div class="val mono" id="kpiSaved">&mdash;</div></div>
     <div class="kpi"><div class="label">Fill-Ups</div><div class="val mono" id="kpiFills">&mdash;</div></div>
@@ -216,7 +233,7 @@
     <div class="kpi"><div class="label">Avg / Driver</div><div class="val mono" id="kpiAvg">&mdash;</div></div>
   </div>
   <div class="board" id="lbBoard"></div>
-  <div class="note"><b>How it works:</b> ranked by total dollars saved (paid vs. retail) on ULSD fuel-card fills, reset each month &mdash; pick a month above, or view All-Time. This tracks and ranks savings; reward amounts are set by dispatch/ops.</div>
+  <div class="note" id="challengeNote"><b>How it works:</b> ranked by total dollars saved (paid vs. retail) on ULSD fuel-card fills, reset each month &mdash; pick a month above, or view All-Time. This tracks and ranks savings; reward amounts are set by dispatch/ops.</div>
 </section>
 
 <!-- MY SAVINGS -->
@@ -226,7 +243,7 @@
   <div id="driverPanel"></div>
 </section>
 
-<footer>Sallee Fuel Board &middot; built from the ULSD fuel-card transaction export &middot; refreshed roughly every 2 weeks</footer>
+<footer>Sallee Fuel Board &middot; built from the ULSD fuel-card transaction export &middot; refreshed twice a week</footer>
 
 <script>
 let DATA = null;
@@ -296,6 +313,24 @@ function renderStateChips(){
 function renderStops(){
   const stops = (DATA.stopsByState[currentState]||[]).slice();
   stops.sort((a,b)=> currentSort==='p' ? a[currentSort]-b[currentSort] : b[currentSort]-a[currentSort]);
+
+  const valorWrap = document.getElementById('valorCard');
+  if(currentState === 'KY' && DATA.valor){
+    const v = DATA.valor;
+    const at = v.allTime;
+    valorWrap.innerHTML = `
+      <div class="valor-card">
+        <div class="vtop">
+          <span class="vname">VALOR OIL &middot; ${v.site.replace(' (Valor Oil)','')}</span>
+          <span class="vprice mono">$${at.price.toFixed(2)}/gal</span>
+        </div>
+        <div class="vsub mono">${at.tx.toLocaleString()} fill-ups &middot; ${Math.round(at.g).toLocaleString()} gal &middot; All-Time through ${monthLabel(v.asOf)}</div>
+        <div class="vnote"><b>Not ranked above &mdash; not yet in the Savings Challenge.</b> Valor's invoices only show what we actually paid, with no retail price to compare it to, so this number isn't an apples-to-apples price against the discounted stops below yet.</div>
+      </div>`;
+  } else {
+    valorWrap.innerHTML = '';
+  }
+
   document.getElementById('stateHeading').textContent = currentState;
   document.getElementById('stateCount').textContent = stops.length + ' stop' + (stops.length===1?'':'s') + ' on file';
   const board = document.getElementById('stopBoard');
@@ -333,7 +368,7 @@ function renderStops(){
 }
 
 /* ================= CHALLENGE ================= */
-let currentMonth;
+let currentMonth, currentMode = 'individual';
 function initChallenge(){
   currentMonth = DATA.months[DATA.months.length-1];
   const wrap = document.getElementById('monthChips');
@@ -344,6 +379,14 @@ function initChallenge(){
     b.addEventListener('click', ()=>{ currentMonth = m; renderMonthChips(); renderChallenge(); });
     wrap.appendChild(b);
   });
+  document.querySelectorAll('#modeToggle .sort-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('#modeToggle .sort-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      currentMode = btn.dataset.mode;
+      renderChallenge();
+    });
+  });
   renderChallenge();
 }
 function renderMonthChips(){
@@ -352,17 +395,59 @@ function renderMonthChips(){
   chips.forEach((b,i)=> b.classList.toggle('active', opts[i]===currentMonth));
 }
 function renderChallenge(){
-  const board = (DATA.leaderboards[currentMonth]||[]).slice().sort((a,b)=>b.s-a.s);
-  const totalSaved = board.reduce((a,d)=>a+d.s,0);
-  const totalFills = board.reduce((a,d)=>a+d.tx,0);
-  const active = board.filter(d=>d.s>0).length;
+  // KPI strip always reflects the full company picture, independent of view mode
+  const allBoard = (DATA.leaderboards[currentMonth]||[]);
+  const totalSaved = allBoard.reduce((a,d)=>a+d.s,0);
+  const totalFills = allBoard.reduce((a,d)=>a+d.tx,0);
+  const active = allBoard.filter(d=>d.s>0).length;
   document.getElementById('kpiSaved').textContent = fmtUSD(totalSaved);
   document.getElementById('kpiFills').textContent = totalFills.toLocaleString();
   document.getElementById('kpiDrivers').textContent = active.toLocaleString();
   document.getElementById('kpiAvg').textContent = fmtUSD(active ? totalSaved/active : 0);
 
+  const note = document.getElementById('challengeNote');
+  if(currentMode === 'team'){
+    note.innerHTML = '<b>How it works:</b> fixed team-driving pairs ranked together on combined dollars saved, reset each month &mdash; pick a month above, or view All-Time. Pairs win or lose as one, since one driver fueling up more often for the team doesn\'t change the pair\'s shared savings. Tap a team to see each driver\'s share.';
+  } else {
+    note.innerHTML = '<b>How it works:</b> ranked by total dollars saved (paid vs. retail) on ULSD fuel-card fills, reset each month &mdash; pick a month above, or view All-Time. This tracks and ranks savings; reward amounts are set by dispatch/ops.';
+  }
+
   const el = document.getElementById('lbBoard');
   el.innerHTML = '';
+
+  if(currentMode === 'team'){
+    const board = (DATA.teamLeaderboards && DATA.teamLeaderboards[currentMonth] || []).slice().sort((a,b)=>b.s-a.s);
+    board.forEach((t,i)=>{
+      const rank = i+1;
+      const [n1, n2] = t.n.split(' & ');
+      const row = document.createElement('div');
+      row.className = 'row' + (rank<=3 ? ' rank'+rank : '');
+      row.innerHTML = `
+        <div class="rownum mono">${rank}</div>
+        <div class="rowmain">
+          <div class="name">${n1} &amp; ${n2}</div>
+          <div class="sub"><span class="mono">${t.tx} fills &middot; ${Math.round(t.g).toLocaleString()} gal combined</span></div>
+        </div>
+        <div class="rownums"><div class="big mono" style="color:var(--good)">${fmtUSD2(t.s)}</div></div>
+        <div class="chev">&#9656;</div>`;
+      const detail = document.createElement('div');
+      detail.className = 'detail';
+      const memberRows = (t.members||[]).map(m=>
+        `<div><b class="mono" style="color:var(--good)">${fmtUSD2(m.s)}</b><span>${m.n} &middot; ${m.tx} fills</span></div>`
+      ).join('');
+      detail.innerHTML = `<div class="dl">
+          <div><b class="mono">${fmtUSD2(t.s)}</b><span>Team Total Saved</span></div>
+          <div><b class="mono">${Math.round(t.g).toLocaleString()} gal</b><span>Combined Gallons</span></div>
+        </div>
+        <div class="dl" style="margin-top:8px;">${memberRows}</div>`;
+      row.addEventListener('click', ()=>{ row.classList.toggle('open'); detail.classList.toggle('open'); });
+      el.appendChild(row);
+      el.appendChild(detail);
+    });
+    return;
+  }
+
+  const board = allBoard.slice().sort((a,b)=>b.s-a.s);
   board.slice(0,15).forEach((d,i)=>{
     const rank = i+1;
     const row = document.createElement('div');
