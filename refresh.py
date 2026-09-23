@@ -3,7 +3,7 @@
 Sallee Fuel Board — data refresh script.
 
 Run this every time you have a fresh fuel-card transaction export, then
-commit + push data/challenge_data.json. The board reads that one file —
+commit + push challenge_data.json. The board reads that one file —
 nothing else needs to change.
 
 Usage:
@@ -22,16 +22,55 @@ What it does:
        per gallon, weighted across every fill at that stop.
     4. Aggregates by driver x month, plus an All-Time total, for the
        Savings Challenge leaderboard.
-    5. Writes data/challenge_data.json in place.
+    5. Writes challenge_data.json in place.
 
 This mirrors the methodology used in the Sallee_Fuel_Discount_Corridor_Plan.xlsx
 workbook: net price = SUM(paid) / SUM(gallons), i.e. what we actually pay per
 gallon after discount, not the sticker discount rate.
+
+Also builds the Team Challenge leaderboard from TEAM_PAIRS below — fixed
+driver pairs (mostly team-driving partners), aggregated together so one
+driver fueling up more often for the pair doesn't split their combined
+savings. Drivers not listed are solo / short-term pairings and only show
+up on the Individual leaderboard.
+
+TO UPDATE THE ROSTER: edit TEAM_PAIRS below (driver names must match the
+"Driver Name" column in the fuel-card export exactly — check spelling
+against a fresh export if a driver's team total looks off) and re-run.
 """
 import sys
 import json
 import datetime
 import pandas as pd
+
+# Fixed team-driving pairs for the Team Challenge. Names as they appear in
+# the fuel-card "Driver Name" column. A driver not listed here drives solo
+# or pairs up only briefly, and appears on the Individual board only.
+TEAM_PAIRS = [
+    ('Michael Becker', 'Valeria Becker'),
+    ('Walter Cabarris', 'Lance Baxter'),
+    ('William Sink', 'Shawn Drumm'),
+    ('Jerald Little', 'Levy Jackson'),
+    ('Allen Weston', 'Matthew Cowan'),
+    ('Dave Stewart', 'Max Grishpenyuk'),
+    ('Daishawn Hunt', 'Bradley Hunt'),
+    ('Christopher Daniels', 'William Puerschner'),
+    ('David Hedge', 'Clifford Geiser'),
+    ('Charles Jones', 'Norberto Ramos'),
+    ('Zackarey Stewart', 'Chase Mclemore'),
+]
+# driver name -> (team display name, [member names])
+DRIVER_TEAM = {}
+for a, b in TEAM_PAIRS:
+    team_name = f"{a} & {b}"
+    DRIVER_TEAM[a] = (team_name, [a, b])
+    DRIVER_TEAM[b] = (team_name, [a, b])
+
+# Known spelling fixes in the source export itself (confirmed against the
+# Valor Oil invoices, which spell this driver's name correctly).
+DRIVER_NAME_FIXES = {
+    'Norberto Ramso': 'Norberto Ramos',
+}
 
 def load(path):
     if path.lower().endswith(('.xlsx', '.xls')):
@@ -48,6 +87,7 @@ def main():
 
     df = raw[raw['Item'].astype(str).str.upper().str.strip() == 'ULSD'].copy()
     df = df[(df['Qty'] > 0) & (df['Disc PPU'] > 0)]
+    df['Driver Name'] = df['Driver Name'].replace(DRIVER_NAME_FIXES)
 
     df['paid'] = df['Amt']
     df['savings'] = (df['Unit Price'] - df['Disc PPU']) * df['Qty']
@@ -97,22 +137,63 @@ def main():
     leaderboards = {m: board_for(df[df['month'] == m]) for m in months}
     leaderboards['All-Time'] = board_for(df)
 
+    # ---- team leaderboards (fixed pairs) ----
+    df['team'] = df['Driver Name'].map(lambda n: DRIVER_TEAM.get(n, (None, None))[0])
+    team_df = df[df['team'].notna()].copy()
+
+    def team_board_for(frame):
+        by_driver = frame.groupby(['team', 'Driver Name']).agg(
+            tx=('Qty', 'size'), gallons=('Qty', 'sum'), savings=('savings', 'sum'),
+        ).reset_index()
+        rows = []
+        for team_name, grp in by_driver.groupby('team'):
+            members = [
+                {
+                    'n': r['Driver Name'],
+                    'tx': int(r['tx']),
+                    'g': round(float(r['gallons']), 1),
+                    's': round(float(r['savings']), 2),
+                }
+                for _, r in grp.sort_values('savings', ascending=False).iterrows()
+            ]
+            rows.append({
+                'n': team_name,
+                'tx': int(grp['tx'].sum()),
+                'g': round(float(grp['gallons'].sum()), 1),
+                's': round(float(grp['savings'].sum()), 2),
+                'members': members,
+            })
+        rows.sort(key=lambda r: r['s'], reverse=True)
+        return rows
+
+    teamLeaderboards = {m: team_board_for(team_df[team_df['month'] == m]) for m in months}
+    teamLeaderboards['All-Time'] = team_board_for(team_df)
+
+    # flag any roster names that don't actually appear in this export
+    known_drivers = set(df['Driver Name'].unique())
+    missing = sorted({n for pair in TEAM_PAIRS for n in pair} - known_drivers)
+    if missing:
+        print(f"NOTE: these TEAM_PAIRS names aren't in this export "
+              f"(check spelling, or they have no fill-ups yet): {', '.join(missing)}")
+
     out = {
         'states': states,
         'stopsByState': stopsByState,
         'months': months,
         'leaderboards': leaderboards,
+        'teamLeaderboards': teamLeaderboards,
         'asOf': months[-1] if months else '',
         'updated': datetime.date.today().isoformat(),
     }
 
-    with open('data/challenge_data.json', 'w') as f:
+    with open('challenge_data.json', 'w') as f:
         json.dump(out, f, separators=(',', ':'))
 
-    print(f"Wrote data/challenge_data.json — {len(states)} states, "
+    print(f"Wrote challenge_data.json — {len(states)} states, "
           f"{sum(len(v) for v in stopsByState.values())} stops, "
-          f"{len(months)} months through {out['asOf']}.")
-    print("Next: git add data/challenge_data.json && git commit -m 'Refresh data' && git push")
+          f"{len(months)} months through {out['asOf']}, "
+          f"{len(TEAM_PAIRS)} teams.")
+    print("Next: git add challenge_data.json && git commit -m 'Refresh data' && git push")
 
 if __name__ == '__main__':
     main()
