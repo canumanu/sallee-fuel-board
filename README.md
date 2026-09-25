@@ -1,4 +1,4 @@
-[README.md](https://github.com/user-attachments/files/32665006/README.md)
+[README.md](https://github.com/user-attachments/files/32666856/README.md)
 # Sallee Fuel Board
 
 Live board of ULSD fuel-card fuel stops ranked by state, plus the monthly
@@ -27,11 +27,10 @@ difference between the two pages is what the Challenge and My Savings tabs
 underlying dollars. The Fuel Stops tab (prices/discounts by state) is
 identical on both, since drivers need that to pick where to fuel.
 
-`ops.html` isn't linked from anywhere on the driver board and is marked
-`noindex` for search engines, but it is a public URL like any GitHub Pages
-file — anyone with the exact link can open it. That's adequate for "keep
-the $ figures out of the everyday driver view," not real access control.
-Don't post the `ops.html` link anywhere drivers would see it.
+`ops.html` is gated behind a Microsoft sign-in (Azure AD / Microsoft Entra
+ID) — see "Ops board access" below. It's also marked `noindex` for search
+engines and isn't linked from the driver board, but that's just tidiness
+now; the real access control is the sign-in gate.
 
 There's no build step — `index.html` is plain HTML/CSS/JS and fetches the
 JSON at load time. Editing the page's look means editing `index.html`
@@ -124,3 +123,34 @@ methodology: `retail = price / (1 - fraction)`, `saved = retail - price`,
 same as everywhere else. At that point Valor's KY stop moves from the
 flagged card into the ranked list and its drivers' savings roll into the
 Challenge like any other fill-up.
+
+## Ops board access (Azure AD sign-in)
+
+`ops.html` requires signing in with a Sallee Microsoft 365 account before
+it shows anything — same pattern as the dispatch/load boards. It uses
+[MSAL.js](https://github.com/AzureAD/microsoft-authentication-library-for-js)
+(`@azure/msal-browser`, loaded from jsDelivr, pinned to `v2.38.3`) against
+an app registration in Sallee's Azure AD tenant.
+
+- **App registration:** single-tenant ("Accounts in this organizational
+  directory only"), platform type **SPA** (not "Web"), redirect URI
+  `https://<org-or-user>.github.io/sallee-fuel-board/ops.html` — must match
+  exactly, including trailing path.
+- **Allowlist:** who's allowed in is a plain array at the top of `ops.html`'s
+  script, `ALLOWED_USERS` — currently just `mdavy@salleehorsevans.com`. To
+  add or remove someone, edit that array (case-insensitive match against
+  their Microsoft sign-in email) — no Azure-side change needed for that.
+- **What happens:** an unauthenticated visitor sees a sign-in screen and
+  never sees the board or fetches `challenge_data.json` from a signed-in
+  session until they sign in. A signed-in visitor not on the allowlist sees
+  a plain "not authorized" screen with a sign-out option — never the board
+  itself. Config values (client ID, tenant ID) are public in the page
+  source, which is normal for MSAL SPA apps — they only identify *which*
+  Azure app to sign into, they don't grant access by themselves; the
+  allowlist check is what actually gates the board.
+- **Changing the Azure app registration:** if the client ID or tenant ID
+  ever changes (new app registration, moved to a different tenant), update
+  the `msalConfig` object near the bottom of `ops.html`'s script
+  (`clientId` / `authority`).
+- **The driver board (`index.html`) has no login** — it was never meant
+  to be restricted, and still isn't. Only `ops.html` is gated.
