@@ -1,4 +1,4 @@
-[README.md](https://github.com/user-attachments/files/32574351/README.md)
+[README.md](https://github.com/user-attachments/files/32665006/README.md)
 # Sallee Fuel Board
 
 Live board of ULSD fuel-card fuel stops ranked by state, plus the monthly
@@ -6,17 +6,32 @@ driver Savings Challenge leaderboard. Same pattern as `barn-boards` and
 `SALLEE-LOAD-BOARD`: a static page on GitHub Pages, reading one JSON data
 file. Refreshing the board means regenerating that one file and pushing.
 
-**Live at:** `https://<org-or-user>.github.io/sallee-fuel-board/` (enable
-Pages on this repo, serving from the `main` branch root, to get this URL).
+**Driver board (share this link):** `https://<org-or-user>.github.io/sallee-fuel-board/`
+**Ops board (dispatch/ops only — do not share):** `https://<org-or-user>.github.io/sallee-fuel-board/ops.html`
+(enable Pages on this repo, serving from the `main` branch root, to get these URLs).
 
 ## Structure
 
 ```
-index.html          the board (fetches challenge_data.json)
-challenge_data.json  all the numbers the board displays
+index.html          driver-facing board (Fuel Savings Points, no $ in Challenge/My Savings)
+ops.html             internal board — same data, full $ savings figures, not linked from index.html
+challenge_data.json  all the numbers both boards display (shared — one source of truth)
 refresh.py           regenerates challenge_data.json from a new ULSD fuel-card export
 refresh_valor.py     merges Valor Oil (1174-Lexington, KY) invoice PDFs into challenge_data.json
 ```
+
+**Two boards, one data file.** `index.html` and `ops.html` both read
+`challenge_data.json` — there's only one refresh workflow (below). The only
+difference between the two pages is what the Challenge and My Savings tabs
+*display*: `index.html` shows Fuel Savings Points, `ops.html` shows the
+underlying dollars. The Fuel Stops tab (prices/discounts by state) is
+identical on both, since drivers need that to pick where to fuel.
+
+`ops.html` isn't linked from anywhere on the driver board and is marked
+`noindex` for search engines, but it is a public URL like any GitHub Pages
+file — anyone with the exact link can open it. That's adequate for "keep
+the $ figures out of the everyday driver view," not real access control.
+Don't post the `ops.html` link anywhere drivers would see it.
 
 There's no build step — `index.html` is plain HTML/CSS/JS and fetches the
 JSON at load time. Editing the page's look means editing `index.html`
@@ -67,6 +82,16 @@ The leaderboard ranks drivers by total dollars saved (paid vs. retail) on
 ULSD fuel-card fills, reset each calendar month (an All-Time view is also
 available). This board tracks and ranks savings — it does not set reward
 amounts; that's a separate call for dispatch/ops.
+
+**Fuel Savings Points (driver board only).** `index.html` never displays
+the dollar figure in the Challenge or My Savings tabs — it converts to
+points instead, at **1 point per $10 saved, rounded** (`toPoints()` near
+the top of `index.html`'s script). Ranking itself is still computed from
+the real dollar amounts (so rounding never changes who's ahead), only the
+*displayed* number is points. This factor isn't printed anywhere on the
+driver board on purpose — change it in one place (`toPoints()`) if it
+ever needs adjusting, and update this note to match. `ops.html` is
+unaffected and always shows the real dollars.
 
 **Individual and Team views.** Most drivers run as fixed team-driving
 pairs, so the Challenge tab has a toggle: Individual (as above) or Team,
