@@ -172,6 +172,46 @@
   footer{ margin-top:26px; text-align:center; color:var(--ink-faint); font-size:11px; }
   footer a{ color:var(--amber); text-decoration:none; }
 
+  /* ---- auth gate ---- */
+  #authGate{
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    padding:24px; text-align:center;
+  }
+  .gate-card{
+    border:1px solid var(--line); border-radius:6px; background:var(--panel);
+    padding:34px 30px; max-width:380px; width:100%;
+  }
+  .gate-brand{ font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--amber); font-weight:600; margin:0 0 6px; }
+  .gate-card h1{ font-size:30px; margin:0 0 6px; line-height:.95; color:var(--ink); }
+  .gate-sub{ color:var(--ink-dim); font-size:13px; line-height:1.5; margin:0 0 22px; }
+  .gate-signin-btn{
+    display:inline-flex; align-items:center; gap:10px; justify-content:center; width:100%;
+    background:var(--ink); color:#1A1200; border:none; border-radius:4px;
+    font-family:'Inter'; font-weight:600; font-size:14px; padding:12px 16px; cursor:pointer;
+  }
+  .gate-signin-btn:hover{ background:var(--amber); }
+  .gate-signin-btn:focus-visible{ outline:2px solid var(--amber); outline-offset:2px; }
+  .gate-spinner{
+    width:22px; height:22px; border:3px solid var(--line); border-top-color:var(--amber);
+    border-radius:50%; margin:0 auto 16px; animation:gate-spin 0.8s linear infinite;
+  }
+  @keyframes gate-spin{ to{ transform:rotate(360deg); } }
+  .gate-loading-text{ color:var(--ink-dim); font-size:13px; }
+  .gate-error{ color:#F87171; font-size:12px; margin-top:14px; line-height:1.5; }
+  .gate-not-auth .vname{ color:#F87171; font-weight:700; font-size:15px; margin-bottom:8px; display:block; }
+  .gate-not-auth .gate-email{ font-family:'IBM Plex Mono'; color:var(--ink); font-size:13px; margin-bottom:16px; word-break:break-all; }
+  .gate-signout-btn{
+    border:1px solid var(--line); background:transparent; color:var(--ink-dim);
+    font-family:'IBM Plex Mono'; font-size:12px; font-weight:600; padding:8px 14px;
+    border-radius:3px; cursor:pointer; letter-spacing:.02em;
+  }
+  .gate-signout-btn:hover{ border-color:var(--amber); color:var(--amber); }
+  .signed-in-as{ color:var(--ink-faint); font-size:11px; margin-top:4px; }
+  .signed-in-as button{
+    border:none; background:none; color:var(--amber); font-size:11px; font-family:'Inter';
+    cursor:pointer; text-decoration:underline; padding:0; margin-left:4px;
+  }
+
   @media print{
     body{ background:#fff; color:#111; max-width:100%; }
     header, .tabs, .picker, .sort-row, .search-wrap, .print-btn, footer{ display:none !important; }
@@ -185,6 +225,35 @@
 </head>
 <body>
 
+<!-- AUTH GATE -->
+<div id="authGate">
+  <div class="gate-card">
+    <p class="gate-brand">Sallee Horse Vans &middot; Fuel Program</p>
+    <h1 class="disp">OPS ACCESS</h1>
+    <p class="gate-sub">Internal board &mdash; full $ savings figures. Sign in with your Sallee Microsoft account.</p>
+
+    <div id="gateLoading">
+      <div class="gate-spinner"></div>
+      <div class="gate-loading-text">Checking sign-in status&hellip;</div>
+    </div>
+
+    <div id="gateSignedOut" hidden>
+      <button class="gate-signin-btn" id="signInBtn">Sign in with Microsoft</button>
+      <div class="gate-error" id="gateError"></div>
+    </div>
+
+    <div id="gateNotAuthorized" class="gate-not-auth" hidden>
+      <span class="vname">Not authorized</span>
+      <div class="gate-email" id="notAuthEmail"></div>
+      <p class="gate-sub" style="margin-bottom:16px;">This account doesn&rsquo;t have access to the ops board. If this is wrong, contact dispatch.</p>
+      <button class="gate-signout-btn" id="signOutBtnGate">Sign out &amp; try another account</button>
+    </div>
+  </div>
+</div>
+
+<!-- BOARD (hidden until sign-in succeeds and is authorized) -->
+<div id="boardApp" style="display:none">
+
 <header>
   <div>
     <p class="brand">Sallee Horse Vans &middot; Fuel Program &middot; <span style="color:var(--ink-faint)">OPS VIEW &mdash; INTERNAL ONLY</span></p>
@@ -194,6 +263,7 @@
     Data through <b id="asOfLabel">&mdash;</b><br>
     Updated <b id="updatedLabel">&mdash;</b>
     &nbsp;&middot;&nbsp;<button class="print-btn" id="printBtn" style="margin-left:6px;">PRINT VIEW</button>
+    <div class="signed-in-as">Signed in as <span id="signedInAs">&mdash;</span><button id="signOutBtn">Sign out</button></div>
   </div>
 </header>
 
@@ -246,6 +316,9 @@
 
 <footer>Sallee Fuel Board (Ops) &middot; full $ savings figures &middot; not for driver distribution &middot; refreshed twice a week</footer>
 
+</div><!-- /#boardApp -->
+
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
 <script>
 let DATA = null;
 
@@ -258,12 +331,14 @@ function monthLabel(m){
   return new Date(parseInt(y),parseInt(mo)-1,1).toLocaleString('en-US',{month:'short'}) + " '" + y.slice(2);
 }
 
-fetch('challenge_data.json').then(r=>r.json()).then(data=>{
-  DATA = data;
-  document.getElementById('asOfLabel').textContent = monthLabel(DATA.asOf) === DATA.asOf ? DATA.asOf : monthLabel(DATA.asOf);
-  document.getElementById('updatedLabel').textContent = DATA.updated || '—';
-  init();
-});
+function bootBoard(){
+  fetch('challenge_data.json').then(r=>r.json()).then(data=>{
+    DATA = data;
+    document.getElementById('asOfLabel').textContent = monthLabel(DATA.asOf) === DATA.asOf ? DATA.asOf : monthLabel(DATA.asOf);
+    document.getElementById('updatedLabel').textContent = DATA.updated || '—';
+    init();
+  });
+}
 
 function init(){
   /* tabs */
@@ -535,6 +610,83 @@ function renderDriverPanel(){
     trend.appendChild(row);
   });
 }
+
+/* ================= AUTH (Azure AD / MSAL.js) ================= */
+const ALLOWED_USERS = ["mdavy@salleehorsevans.com"];
+
+const msalConfig = {
+  auth: {
+    clientId: "5e93d39b-dee0-4f32-a692-69aad552ea8b",
+    authority: "https://login.microsoftonline.com/428e82a0-5a1b-41e6-a24c-ca8ea70db05a",
+    redirectUri: window.location.origin + window.location.pathname,
+    postLogoutRedirectUri: window.location.origin + window.location.pathname,
+  },
+  cache: {
+    cacheLocation: "sessionStorage",
+    storeAuthStateInCookie: false,
+  },
+};
+const msalInstance = new msal.PublicClientApplication(msalConfig);
+
+function isAllowed(account){
+  const email = (account && account.username || '').toLowerCase();
+  return ALLOWED_USERS.includes(email);
+}
+
+function showSignedOut(errMsg){
+  document.getElementById('gateLoading').hidden = true;
+  document.getElementById('gateNotAuthorized').hidden = true;
+  document.getElementById('gateSignedOut').hidden = false;
+  document.getElementById('gateError').textContent = errMsg || '';
+}
+
+function showNotAuthorized(account){
+  document.getElementById('gateLoading').hidden = true;
+  document.getElementById('gateSignedOut').hidden = true;
+  document.getElementById('gateNotAuthorized').hidden = false;
+  document.getElementById('notAuthEmail').textContent = account.username || '';
+}
+
+function showBoard(account){
+  document.getElementById('authGate').style.display = 'none';
+  document.getElementById('boardApp').style.display = '';
+  document.getElementById('signedInAs').textContent = account.username || '';
+  bootBoard();
+}
+
+function handleAccount(account){
+  if(!account){ showSignedOut(); return; }
+  msalInstance.setActiveAccount(account);
+  if(isAllowed(account)){
+    showBoard(account);
+  } else {
+    showNotAuthorized(account);
+  }
+}
+
+msalInstance.handleRedirectPromise()
+  .then(response=>{
+    let account = response && response.account ? response.account : msalInstance.getActiveAccount();
+    if(!account){
+      const existing = msalInstance.getAllAccounts();
+      if(existing.length > 0) account = existing[0];
+    }
+    handleAccount(account);
+  })
+  .catch(err=>{
+    console.error('MSAL redirect error', err);
+    showSignedOut('Sign-in failed: ' + (err && err.errorMessage ? err.errorMessage : 'please try again.'));
+  });
+
+document.getElementById('signInBtn').addEventListener('click', ()=>{
+  msalInstance.loginRedirect({ scopes: ["User.Read"] });
+});
+document.getElementById('signOutBtnGate').addEventListener('click', ()=>{
+  msalInstance.logoutRedirect();
+});
+document.getElementById('signOutBtn').addEventListener('click', ()=>{
+  msalInstance.logoutRedirect();
+});
 </script>
 </body>
 </html>
