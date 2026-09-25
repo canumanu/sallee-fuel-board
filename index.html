@@ -227,10 +227,10 @@
     <button class="sort-btn" data-mode="team">TEAM</button>
   </div>
   <div class="kpi-strip">
-    <div class="kpi money"><div class="label">Company Saved</div><div class="val mono" id="kpiSaved">&mdash;</div></div>
+    <div class="kpi money"><div class="label">Total Points</div><div class="val mono" id="kpiSaved">&mdash;</div></div>
     <div class="kpi"><div class="label">Fill-Ups</div><div class="val mono" id="kpiFills">&mdash;</div></div>
     <div class="kpi"><div class="label">Active Drivers</div><div class="val mono" id="kpiDrivers">&mdash;</div></div>
-    <div class="kpi"><div class="label">Avg / Driver</div><div class="val mono" id="kpiAvg">&mdash;</div></div>
+    <div class="kpi"><div class="label">Avg Points / Driver</div><div class="val mono" id="kpiAvg">&mdash;</div></div>
   </div>
   <div class="board" id="lbBoard"></div>
   <div class="note" id="challengeNote"><b>How it works:</b> ranked by total dollars saved (paid vs. retail) on ULSD fuel-card fills, reset each month &mdash; pick a month above, or view All-Time. This tracks and ranks savings; reward amounts are set by dispatch/ops.</div>
@@ -251,6 +251,10 @@ let DATA = null;
 function fmtUSD(n){ return '$' + n.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}); }
 function fmtUSD2(n){ return '$' + n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function titleCase(s){ return s.replace(/\w\S*/g, t => t.charAt(0).toUpperCase()+t.slice(1).toLowerCase()); }
+// Driver-facing board: the Challenge and My Savings tabs show Fuel Savings
+// Points instead of dollar figures. Full $ savings stay on the ops-only board.
+function toPoints(usd){ return Math.round(usd * 0.1); }
+function fmtPts(usd){ return toPoints(usd).toLocaleString('en-US'); }
 function monthLabel(m){
   if(m==='All-Time') return 'All-Time';
   const [y,mo] = m.split('-');
@@ -400,16 +404,16 @@ function renderChallenge(){
   const totalSaved = allBoard.reduce((a,d)=>a+d.s,0);
   const totalFills = allBoard.reduce((a,d)=>a+d.tx,0);
   const active = allBoard.filter(d=>d.s>0).length;
-  document.getElementById('kpiSaved').textContent = fmtUSD(totalSaved);
+  document.getElementById('kpiSaved').textContent = fmtPts(totalSaved);
   document.getElementById('kpiFills').textContent = totalFills.toLocaleString();
   document.getElementById('kpiDrivers').textContent = active.toLocaleString();
-  document.getElementById('kpiAvg').textContent = fmtUSD(active ? totalSaved/active : 0);
+  document.getElementById('kpiAvg').textContent = fmtPts(active ? totalSaved/active : 0);
 
   const note = document.getElementById('challengeNote');
   if(currentMode === 'team'){
-    note.innerHTML = '<b>How it works:</b> fixed team-driving pairs ranked together on combined dollars saved, reset each month &mdash; pick a month above, or view All-Time. Pairs win or lose as one, since one driver fueling up more often for the team doesn\'t change the pair\'s shared savings. Tap a team to see each driver\'s share.';
+    note.innerHTML = '<b>How it works:</b> fixed team-driving pairs ranked together on combined Fuel Savings Points, reset each month &mdash; pick a month above, or view All-Time. Pairs win or lose as one, since one driver fueling up more often for the team doesn\'t change the pair\'s shared points. Tap a team to see each driver\'s share.';
   } else {
-    note.innerHTML = '<b>How it works:</b> ranked by total dollars saved (paid vs. retail) on ULSD fuel-card fills, reset each month &mdash; pick a month above, or view All-Time. This tracks and ranks savings; reward amounts are set by dispatch/ops.';
+    note.innerHTML = '<b>How it works:</b> ranked by Fuel Savings Points earned on ULSD fuel-card fills, reset each month &mdash; pick a month above, or view All-Time. This tracks and ranks performance; reward amounts are set by dispatch/ops.';
   }
 
   const el = document.getElementById('lbBoard');
@@ -428,15 +432,15 @@ function renderChallenge(){
           <div class="name">${n1} &amp; ${n2}</div>
           <div class="sub"><span class="mono">${t.tx} fills &middot; ${Math.round(t.g).toLocaleString()} gal combined</span></div>
         </div>
-        <div class="rownums"><div class="big mono" style="color:var(--good)">${fmtUSD2(t.s)}</div></div>
+        <div class="rownums"><div class="big mono" style="color:var(--good)">${fmtPts(t.s)} PTS</div></div>
         <div class="chev">&#9656;</div>`;
       const detail = document.createElement('div');
       detail.className = 'detail';
       const memberRows = (t.members||[]).map(m=>
-        `<div><b class="mono" style="color:var(--good)">${fmtUSD2(m.s)}</b><span>${m.n} &middot; ${m.tx} fills</span></div>`
+        `<div><b class="mono" style="color:var(--good)">${fmtPts(m.s)} PTS</b><span>${m.n} &middot; ${m.tx} fills</span></div>`
       ).join('');
       detail.innerHTML = `<div class="dl">
-          <div><b class="mono">${fmtUSD2(t.s)}</b><span>Team Total Saved</span></div>
+          <div><b class="mono">${fmtPts(t.s)} PTS</b><span>Team Points</span></div>
           <div><b class="mono">${Math.round(t.g).toLocaleString()} gal</b><span>Combined Gallons</span></div>
         </div>
         <div class="dl" style="margin-top:8px;">${memberRows}</div>`;
@@ -458,14 +462,14 @@ function renderChallenge(){
         <div class="name">${d.n}</div>
         <div class="sub"><span class="mono">${d.tx} fills &middot; ${Math.round(d.g).toLocaleString()} gal</span></div>
       </div>
-      <div class="rownums"><div class="big mono" style="color:var(--good)">${fmtUSD2(d.s)}</div></div>
+      <div class="rownums"><div class="big mono" style="color:var(--good)">${fmtPts(d.s)} PTS</div></div>
       <div class="chev">&#9656;</div>`;
     const detail = document.createElement('div');
     detail.className = 'detail';
-    const perGal = d.g ? (d.s/d.g) : 0;
+    const ptsPerGal = d.g ? (toPoints(d.s)/d.g) : 0;
     detail.innerHTML = `<div class="dl">
-        <div><b class="mono">${fmtUSD2(d.s)}</b><span>Total Saved</span></div>
-        <div><b class="mono">$${perGal.toFixed(2)}</b><span>Avg Saved / Gal</span></div>
+        <div><b class="mono">${fmtPts(d.s)} PTS</b><span>Points Earned</span></div>
+        <div><b class="mono">${ptsPerGal.toFixed(2)}</b><span>Points / Gal</span></div>
         <div><b class="mono">${Math.round(d.g).toLocaleString()} gal</b><span>Gallons Pumped</span></div>
       </div>`;
     row.addEventListener('click', ()=>{ row.classList.toggle('open'); detail.classList.toggle('open'); });
@@ -515,7 +519,7 @@ function renderDriverPanel(){
   panel.innerHTML = `
     <div class="driver-summary">
       <div class="cell"><div class="label">All-Time Rank</div><div class="val mono">#${allRank||'—'}</div></div>
-      <div class="cell"><div class="label">Total Saved</div><div class="val mono" style="color:var(--good)">${fmtUSD2(all.s)}</div></div>
+      <div class="cell"><div class="label">Total Points</div><div class="val mono" style="color:var(--good)">${fmtPts(all.s)}</div></div>
       <div class="cell"><div class="label">Fill-Ups</div><div class="val mono">${all.tx}</div></div>
       <div class="cell"><div class="label">Gallons</div><div class="val mono">${Math.round(all.g).toLocaleString()}</div></div>
     </div>
@@ -529,7 +533,7 @@ function renderDriverPanel(){
     row.innerHTML = `
       <div>${monthLabel(m.month)}</div>
       <div class="trend-bar-track"><div class="trend-bar" style="width:${m.s>0 ? (m.s/maxSave*100) : 0}%"></div></div>
-      <div class="trend-save">${m.s>0 ? fmtUSD2(m.s) : '—'}</div>
+      <div class="trend-save">${m.s>0 ? fmtPts(m.s)+' pts' : '—'}</div>
       <div class="trend-rank">${m.rank ? '#'+m.rank : '—'}</div>`;
     trend.appendChild(row);
   });
